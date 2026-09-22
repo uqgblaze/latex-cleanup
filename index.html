@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PowerPoint → Rise LaTeX Cleaner</title>
+  <style>
+    :root {
+      --uq-purple: #51247A;
+      --uq-purple-dark: #3b195d;
+      --bg: #f6f4f8;
+      --panel: #ffffff;
+      --border: #d8d2df;
+      --text: #242129;
+      --muted: #68606f;
+      --success: #16794a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .wrap {
+      width: min(1100px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      color: var(--uq-purple);
+      font-size: clamp(1.6rem, 3vw, 2.3rem);
+    }
+
+    .intro {
+      margin: 0 0 24px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.04);
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.96rem;
+      line-height: 1.5;
+      background: #fff;
+      color: #111;
+    }
+
+    textarea:focus {
+      outline: 3px solid rgba(81, 36, 122, .16);
+      border-color: var(--uq-purple);
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--uq-purple);
+      color: white;
+    }
+
+    button:hover { background: var(--uq-purple-dark); }
+
+    button.secondary {
+      background: #eee9f2;
+      color: var(--uq-purple-dark);
+    }
+
+    .options {
+      margin: 18px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .options label {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      margin: 0;
+      font-weight: 400;
+    }
+
+    .status {
+      min-height: 1.4em;
+      margin-top: 12px;
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    .example {
+      margin-top: 20px;
+      padding: 14px 16px;
+      border-left: 4px solid var(--uq-purple);
+      background: #eee9f2;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+      textarea { min-height: 180px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>PowerPoint → Rise LaTeX Cleaner</h1>
+    <p class="intro">
+      Paste the LaTeX-like text copied from PowerPoint. The cleaner removes PowerPoint's extra escaping while preserving normal LaTeX commands such as <code>\sum</code>, <code>\lambda</code>, <code>\cdot</code>, and <code>\frac</code>.
+    </p>
+
+    <div class="grid">
+      <section class="panel">
+        <label for="input">PowerPoint clipboard output</label>
+        <textarea id="input" spellcheck="false" placeholder="Paste PowerPoint output here…"></textarea>
+        <div class="buttons">
+          <button type="button" id="pasteBtn">Paste from clipboard</button>
+          <button type="button" class="secondary" id="clearBtn">Clear</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <label for="output">Rise-ready LaTeX</label>
+        <textarea id="output" spellcheck="false" readonly placeholder="Converted LaTeX will appear here…"></textarea>
+        <div class="buttons">
+          <button type="button" id="copyBtn">Copy Rise LaTeX</button>
+        </div>
+        <div class="status" id="status" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <div class="options">
+      <label>
+        <input type="checkbox" id="tidySpacing" checked>
+        Tidy common spacing
+      </label>
+    </div>
+
+    <div class="example">
+      <strong>Example</strong><br><br>
+      PowerPoint:<br>
+      <code>Z\_\{A\}\^\{\\ast\ \}\=\\sum\_\{i\=\1\}\^\{n\}\ \{\\lambda\ \}\_\{i\}\\cdot\ Z\_\{i\}</code>
+      <br><br>
+      Result:<br>
+      <code>Z_{A}^{\ast} = \sum_{i = 1}^{n} {\lambda}_{i} \cdot Z_{i}</code>
+    </div>
+  </main>
+
+  <script>
+    const input = document.getElementById('input');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+    const tidySpacing = document.getElementById('tidySpacing');
+
+    function convertPowerPointLatex(source) {
+      let s = source.replace(/\r\n?/g, '\n').trim();
+
+      if (!s) return '';
+
+      // PowerPoint clipboard output commonly doubles genuine LaTeX backslashes.
+      // Example: \\sum -> \sum
+      s = s.replace(/\\\\/g, '\\');
+
+      // Remove PowerPoint escaping from characters that do not need to be
+      // escaped in ordinary LaTeX mathematical input.
+      // Example: \_  \^  \{  \}  \=  ->  _  ^  {  }  =
+      s = s.replace(/\\([_{}^=])/g, '$1');
+
+      // PowerPoint may prefix ordinary numerals with a backslash.
+      // Example: \1 -> 1
+      s = s.replace(/\\(?=\d)/g, '');
+
+      // Convert a backslash followed by whitespace into ordinary whitespace.
+      // This removes artefacts such as \ast\  without touching commands.
+      s = s.replace(/\\(?=\s)/g, '');
+
+      if (tidySpacing.checked) {
+        // Remove padding immediately inside groups.
+        s = s.replace(/\{\s+/g, '{');
+        s = s.replace(/\s+\}/g, '}');
+
+        // Normalise spaces around common operators.
+        s = s.replace(/\s*=\s*/g, ' = ');
+        s = s.replace(/\s*\\cdot\s*/g, ' \\cdot ');
+        s = s.replace(/\s*\\times\s*/g, ' \\times ');
+        s = s.replace(/\s*\\pm\s*/g, ' \\pm ');
+
+        // Remove unnecessary spaces before sub/superscripts.
+        s = s.replace(/\s+([_^])/g, '$1');
+
+        // Collapse repeated ordinary spaces while preserving new lines.
+        s = s.split('\n').map(line => line.replace(/[ \t]{2,}/g, ' ').trim()).join('\n');
+      }
+
+      return s;
+    }
+
+    function updateOutput() {
+      output.value = convertPowerPointLatex(input.value);
+      status.textContent = '';
+    }
+
+    input.addEventListener('input', updateOutput);
+    tidySpacing.addEventListener('change', updateOutput);
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      input.value = '';
+      output.value = '';
+      status.textContent = '';
+      input.focus();
+    });
+
+    document.getElementById('pasteBtn').addEventListener('click', async () => {
+      try {
+        input.value = await navigator.clipboard.readText();
+        updateOutput();
+        status.textContent = 'Pasted and converted.';
+      } catch (err) {
+        status.textContent = 'Clipboard access was blocked. Click the left box and press Ctrl+V instead.';
+        input.focus();
+      }
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      if (!output.value) {
+        status.textContent = 'There is nothing to copy yet.';
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent = 'Copied. Ready to paste into Rise.';
+      } catch (err) {
+        output.removeAttribute('readonly');
+        output.select();
+        document.execCommand('copy');
+        output.setAttribute('readonly', '');
+        status.textContent = 'Copied. Ready to paste into Rise.';
+      }
+    });
+  </script>
+</body>
+</html>
