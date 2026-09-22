@@ -158,23 +158,29 @@
       font-weight: 700;
     }
 
-    .example {
+    .summary {
       margin-top: 20px;
-      padding: 14px 16px;
+      padding: 18px;
       border-left: 4px solid var(--uq-purple);
       background: #eee9f2;
-      border-radius: 6px;
+      border-radius: 8px;
       overflow-wrap: anywhere;
       line-height: 1.5;
     }
 
-    .example-preview {
+    .summary h2 {
+      margin: 0 0 14px;
+      color: var(--uq-purple);
+      font-size: 1.15rem;
+    }
+
+    .formula-preview {
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 90px;
+      min-height: 100px;
       margin: 0 0 18px;
-      padding: 14px 12px;
+      padding: 16px 12px;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -182,8 +188,31 @@
       overflow-x: auto;
     }
 
-    .example-preview mjx-container {
+    .formula-preview mjx-container {
       margin: 0 !important;
+    }
+
+    .summary-row {
+      margin-top: 14px;
+    }
+
+    .summary-label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+
+    .summary-value {
+      display: block;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.72);
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+
+    .summary-placeholder {
+      color: var(--muted);
+      font-style: italic;
     }
 
     .notice {
@@ -256,22 +285,22 @@
 
     <div class="status" id="status" aria-live="polite"></div>
 
-    <div class="example">
-      <div class="example-preview" aria-label="Rendered example formula">
-        \[
-          Z_{A}^{\ast} = \sum_{i = 1}^{n} {\lambda}_{i} \cdot Z_{i}
-        \]
+    <section class="summary" aria-labelledby="summaryHeading">
+      <h2 id="summaryHeading">Preview / summary</h2>
+      <div class="formula-preview" id="formulaPreview" aria-live="polite">
+        <span class="summary-placeholder">Paste a PowerPoint formula above to preview it here.</span>
       </div>
-      <strong>Example</strong><br><br>
-      PowerPoint:<br>
-      <code>Z\_\{A\}\^\{\\ast\ \}\=\\sum\_\{i\=\1\}\^\{n\}\ \{\\lambda\ \}\_\{i\}\\cdot\ Z\_\{i\}</code>
-      <br><br>
-      Rise-ready LaTeX:<br>
-      <code>Z_{A}^{\ast} = \sum_{i = 1}^{n} {\lambda}_{i} \cdot Z_{i}</code>
-      <br><br>
-      Short description:<br>
-      <span>Z sub A superscript asterisk equals the sum from i equals 1 to n of lambda sub i times Z sub i.</span>
-    </div>
+
+      <div class="summary-row">
+        <span class="summary-label">Rise-ready LaTeX</span>
+        <code class="summary-value summary-placeholder" id="summaryLatex">Converted LaTeX will appear here.</code>
+      </div>
+
+      <div class="summary-row">
+        <span class="summary-label">Short description</span>
+        <span class="summary-value summary-placeholder" id="summaryDescription">The screen-reader description will appear here.</span>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -280,6 +309,9 @@
     const description = document.getElementById('description');
     const status = document.getElementById('status');
     const tidySpacing = document.getElementById('tidySpacing');
+    const formulaPreview = document.getElementById('formulaPreview');
+    const summaryLatex = document.getElementById('summaryLatex');
+    const summaryDescription = document.getElementById('summaryDescription');
 
     function convertPowerPointLatex(source) {
       let s = source.replace(/\r\n?/g, '\n').trim();
@@ -580,18 +612,51 @@
       return new LatexSpeaker(latex).speak();
     }
 
+    function updatePreview() {
+      const cleaned = output.value.trim();
+      const spoken = description.value.trim();
+
+      if (cleaned) {
+        formulaPreview.innerHTML = `\\[${cleaned}\\]`;
+        summaryLatex.textContent = cleaned;
+        summaryLatex.classList.remove('summary-placeholder');
+
+        if (window.MathJax?.typesetPromise) {
+          MathJax.typesetClear([formulaPreview]);
+          MathJax.typesetPromise([formulaPreview]).catch(() => {
+            formulaPreview.textContent = cleaned;
+          });
+        }
+      } else {
+        formulaPreview.innerHTML = '<span class="summary-placeholder">Paste a PowerPoint formula above to preview it here.</span>';
+        summaryLatex.textContent = 'Converted LaTeX will appear here.';
+        summaryLatex.classList.add('summary-placeholder');
+      }
+
+      if (spoken) {
+        summaryDescription.textContent = spoken;
+        summaryDescription.classList.remove('summary-placeholder');
+      } else {
+        summaryDescription.textContent = 'The screen-reader description will appear here.';
+        summaryDescription.classList.add('summary-placeholder');
+      }
+    }
+
     function updateOutput() {
       const cleaned = convertPowerPointLatex(input.value);
       output.value = cleaned;
       description.value = latexToShortDescription(cleaned);
+      updatePreview();
       status.textContent = '';
     }
 
     input.addEventListener('input', updateOutput);
     tidySpacing.addEventListener('change', updateOutput);
+    description.addEventListener('input', updatePreview);
 
     document.getElementById('regenerateBtn').addEventListener('click', () => {
       description.value = latexToShortDescription(output.value);
+      updatePreview();
       status.textContent = description.value ? 'Short description regenerated.' : 'There is no formula to describe yet.';
     });
 
@@ -599,6 +664,7 @@
       input.value = '';
       output.value = '';
       description.value = '';
+      updatePreview();
       status.textContent = '';
       input.focus();
     });
