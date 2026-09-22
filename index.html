@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en-AU">
 <head>
@@ -15,6 +14,7 @@
       --text: #242129;
       --muted: #68606f;
       --success: #16794a;
+      --notice: #f5f0f8;
     }
 
     * { box-sizing: border-box; }
@@ -57,10 +57,21 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.04);
     }
 
+    .description-panel {
+      grid-column: 1 / -1;
+    }
+
     label {
       display: block;
       font-weight: 700;
       margin-bottom: 8px;
+    }
+
+    .hint {
+      margin: -2px 0 10px;
+      color: var(--muted);
+      font-size: .92rem;
+      line-height: 1.45;
     }
 
     textarea {
@@ -75,6 +86,12 @@
       line-height: 1.5;
       background: #fff;
       color: #111;
+    }
+
+    #description {
+      min-height: 130px;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 1rem;
     }
 
     textarea:focus {
@@ -136,6 +153,17 @@
       background: #eee9f2;
       border-radius: 6px;
       overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
+    .notice {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: var(--notice);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: .92rem;
+      line-height: 1.45;
     }
 
     code {
@@ -144,7 +172,9 @@
 
     @media (max-width: 760px) {
       .grid { grid-template-columns: 1fr; }
+      .description-panel { grid-column: auto; }
       textarea { min-height: 180px; }
+      #description { min-height: 120px; }
     }
   </style>
 </head>
@@ -152,7 +182,7 @@
   <main class="wrap">
     <h1>PowerPoint → Rise LaTeX Cleaner</h1>
     <p class="intro">
-      Paste the LaTeX-like text copied from PowerPoint. The cleaner removes PowerPoint's extra escaping while preserving normal LaTeX commands such as <code>\sum</code>, <code>\lambda</code>, <code>\cdot</code>, and <code>\frac</code>.
+      Paste the LaTeX-like text copied from PowerPoint. The cleaner removes PowerPoint's extra escaping while preserving normal LaTeX commands, then generates a plain-English short description suitable for a screen reader.
     </p>
 
     <div class="grid">
@@ -171,7 +201,19 @@
         <div class="buttons">
           <button type="button" id="copyBtn">Copy Rise LaTeX</button>
         </div>
-        <div class="status" id="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel description-panel">
+        <label for="description">Short description for screen readers</label>
+        <p class="hint">Generated from the cleaned formula. You can edit this wording before copying it into Rise.</p>
+        <textarea id="description" spellcheck="true" placeholder="A spoken description of the formula will appear here…"></textarea>
+        <div class="buttons">
+          <button type="button" id="copyDescriptionBtn">Copy short description</button>
+          <button type="button" class="secondary" id="regenerateBtn">Regenerate description</button>
+        </div>
+        <div class="notice">
+          Automatic maths-to-speech is a useful starting point, but specialised notation can be context-dependent. Check the description before publishing, particularly where a symbol has a discipline-specific meaning.
+        </div>
       </section>
     </div>
 
@@ -182,33 +224,37 @@
       </label>
     </div>
 
+    <div class="status" id="status" aria-live="polite"></div>
+
     <div class="example">
       <strong>Example</strong><br><br>
       PowerPoint:<br>
       <code>Z\_\{A\}\^\{\\ast\ \}\=\\sum\_\{i\=\1\}\^\{n\}\ \{\\lambda\ \}\_\{i\}\\cdot\ Z\_\{i\}</code>
       <br><br>
-      Result:<br>
+      Rise-ready LaTeX:<br>
       <code>Z_{A}^{\ast} = \sum_{i = 1}^{n} {\lambda}_{i} \cdot Z_{i}</code>
+      <br><br>
+      Short description:<br>
+      <span>Z sub A superscript asterisk equals the sum from i equals 1 to n of lambda sub i times Z sub i.</span>
     </div>
   </main>
 
   <script>
     const input = document.getElementById('input');
     const output = document.getElementById('output');
+    const description = document.getElementById('description');
     const status = document.getElementById('status');
     const tidySpacing = document.getElementById('tidySpacing');
 
     function convertPowerPointLatex(source) {
       let s = source.replace(/\r\n?/g, '\n').trim();
-
       if (!s) return '';
 
       // PowerPoint clipboard output commonly doubles genuine LaTeX backslashes.
       // Example: \\sum -> \sum
       s = s.replace(/\\\\/g, '\\');
 
-      // Remove PowerPoint escaping from characters that do not need to be
-      // escaped in ordinary LaTeX mathematical input.
+      // Remove PowerPoint escaping from characters that do not need it.
       // Example: \_  \^  \{  \}  \=  ->  _  ^  {  }  =
       s = s.replace(/\\([_{}^=])/g, '$1');
 
@@ -217,41 +263,307 @@
       s = s.replace(/\\(?=\d)/g, '');
 
       // Convert a backslash followed by whitespace into ordinary whitespace.
-      // This removes artefacts such as \ast\  without touching commands.
       s = s.replace(/\\(?=\s)/g, '');
 
       if (tidySpacing.checked) {
-        // Remove padding immediately inside groups.
         s = s.replace(/\{\s+/g, '{');
         s = s.replace(/\s+\}/g, '}');
-
-        // Normalise spaces around common operators.
         s = s.replace(/\s*=\s*/g, ' = ');
         s = s.replace(/\s*\\cdot\s*/g, ' \\cdot ');
         s = s.replace(/\s*\\times\s*/g, ' \\times ');
         s = s.replace(/\s*\\pm\s*/g, ' \\pm ');
-
-        // Remove unnecessary spaces before sub/superscripts.
         s = s.replace(/\s+([_^])/g, '$1');
-
-        // Collapse repeated ordinary spaces while preserving new lines.
         s = s.split('\n').map(line => line.replace(/[ \t]{2,}/g, ' ').trim()).join('\n');
       }
 
       return s;
     }
 
+    const commandSpeech = {
+      alpha: 'alpha', beta: 'beta', gamma: 'gamma', delta: 'delta', epsilon: 'epsilon',
+      varepsilon: 'epsilon', zeta: 'zeta', eta: 'eta', theta: 'theta', vartheta: 'theta',
+      iota: 'iota', kappa: 'kappa', lambda: 'lambda', mu: 'mu', nu: 'nu', xi: 'xi',
+      omicron: 'omicron', pi: 'pi', varpi: 'pi', rho: 'rho', varrho: 'rho', sigma: 'sigma',
+      varsigma: 'sigma', tau: 'tau', upsilon: 'upsilon', phi: 'phi', varphi: 'phi',
+      chi: 'chi', psi: 'psi', omega: 'omega',
+      Gamma: 'capital gamma', Delta: 'capital delta', Theta: 'capital theta', Lambda: 'capital lambda',
+      Xi: 'capital xi', Pi: 'capital pi', Sigma: 'capital sigma', Upsilon: 'capital upsilon',
+      Phi: 'capital phi', Psi: 'capital psi', Omega: 'capital omega',
+      cdot: 'times', times: 'times', div: 'divided by', pm: 'plus or minus', mp: 'minus or plus',
+      le: 'less than or equal to', leq: 'less than or equal to', ge: 'greater than or equal to',
+      geq: 'greater than or equal to', neq: 'not equal to', approx: 'approximately equal to',
+      sim: 'is similar to', propto: 'is proportional to', in: 'is in', notin: 'is not in',
+      subset: 'is a subset of', subseteq: 'is a subset of or equal to',
+      superset: 'is a superset of', supseteq: 'is a superset of or equal to',
+      to: 'to', rightarrow: 'right arrow', leftarrow: 'left arrow', leftrightarrow: 'left right arrow',
+      infty: 'infinity', partial: 'partial', nabla: 'nabla', ell: 'ell', hbar: 'h bar',
+      ast: 'asterisk', star: 'star', circ: 'circle', degree: 'degrees',
+      sin: 'sine', cos: 'cosine', tan: 'tangent', sec: 'secant', csc: 'cosecant', cot: 'cotangent',
+      arcsin: 'arc sine', arccos: 'arc cosine', arctan: 'arc tangent',
+      log: 'log', ln: 'natural log', exp: 'exponential', min: 'minimum', max: 'maximum',
+      det: 'determinant', gcd: 'greatest common divisor',
+      forall: 'for all', exists: 'there exists', neg: 'not', land: 'and', lor: 'or',
+      ldots: 'dot dot dot', cdots: 'dot dot dot', dots: 'dot dot dot'
+    };
+
+    const ignoredCommands = new Set([
+      'left', 'right', 'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle',
+      'quad', 'qquad', ',', ';', ':', '!', 'enspace', 'thinspace', 'medspace', 'thickspace'
+    ]);
+
+    class LatexSpeaker {
+      constructor(source) {
+        this.s = source || '';
+        this.i = 0;
+      }
+
+      speak() {
+        let result = this.parseUntil(null);
+        result = result
+          .replace(/\s+/g, ' ')
+          .replace(/\s+([,.;:])/g, '$1')
+          .replace(/\bthe sum from\s+to\s+of\b/g, 'the sum of')
+          .replace(/\bthe integral from\s+to\s+of\b/g, 'the integral of')
+          .trim();
+
+        if (!result) return '';
+        result = result.charAt(0).toUpperCase() + result.slice(1);
+        if (!/[.!?]$/.test(result)) result += '.';
+        return result;
+      }
+
+      parseUntil(stopChar) {
+        const parts = [];
+
+        while (this.i < this.s.length) {
+          const ch = this.s[this.i];
+          if (stopChar && ch === stopChar) {
+            this.i++;
+            break;
+          }
+
+          if (/\s/.test(ch)) {
+            this.i++;
+            continue;
+          }
+
+          if (ch === '{') {
+            this.i++;
+            const inner = this.parseUntil('}');
+            if (inner) parts.push(inner);
+            continue;
+          }
+
+          if (ch === '\\') {
+            const phrase = this.parseCommand();
+            if (phrase) parts.push(phrase);
+            continue;
+          }
+
+          if (ch === '_' || ch === '^') {
+            this.i++;
+            const arg = this.readArgumentSpeech();
+            if (ch === '_') {
+              if (arg) parts.push('sub ' + arg);
+            } else if (arg === '2') {
+              parts.push('squared');
+            } else if (arg === '3') {
+              parts.push('cubed');
+            } else if (arg) {
+              parts.push('superscript ' + arg);
+            }
+            continue;
+          }
+
+          if (/\d/.test(ch)) {
+            parts.push(this.readNumber());
+            continue;
+          }
+
+          if (/[A-Za-z]/.test(ch)) {
+            parts.push(this.readLetters());
+            continue;
+          }
+
+          const symbols = {
+            '=': 'equals', '+': 'plus', '-': 'minus', '−': 'minus', '*': 'times',
+            '/': 'divided by', '<': 'less than', '>': 'greater than',
+            '(': 'open parenthesis', ')': 'close parenthesis',
+            '[': 'open bracket', ']': 'close bracket',
+            ',': ',', ';': ';', ':': ':',
+            '|': 'vertical bar', '%': 'percent', '&': 'and'
+          };
+
+          if (symbols[ch]) parts.push(symbols[ch]);
+          else if (ch !== '}') parts.push(ch);
+          this.i++;
+        }
+
+        return parts.join(' ');
+      }
+
+      parseCommand() {
+        this.i++; // skip backslash
+        if (this.i >= this.s.length) return '';
+
+        let name = '';
+        if (/[A-Za-z]/.test(this.s[this.i])) {
+          while (this.i < this.s.length && /[A-Za-z]/.test(this.s[this.i])) {
+            name += this.s[this.i++];
+          }
+        } else {
+          name = this.s[this.i++];
+        }
+
+        if (ignoredCommands.has(name)) return '';
+
+        if (name === 'frac' || name === 'dfrac' || name === 'tfrac') {
+          const numerator = this.readArgumentSpeech();
+          const denominator = this.readArgumentSpeech();
+          return `fraction ${numerator} over ${denominator}`.trim();
+        }
+
+        if (name === 'sqrt') {
+          this.skipSpaces();
+          let index = '';
+          if (this.s[this.i] === '[') {
+            this.i++;
+            const start = this.i;
+            while (this.i < this.s.length && this.s[this.i] !== ']') this.i++;
+            index = this.s.slice(start, this.i);
+            if (this.s[this.i] === ']') this.i++;
+          }
+          const radicand = this.readArgumentSpeech();
+          if (!index || index === '2') return `square root of ${radicand}`;
+          if (index === '3') return `cube root of ${radicand}`;
+          return `${this.describeFragment(index)} root of ${radicand}`;
+        }
+
+        if (['sum', 'prod', 'int', 'iint', 'iiint', 'lim'].includes(name)) {
+          const scripts = this.readScripts();
+          let base = '';
+          if (name === 'sum') base = 'the sum';
+          if (name === 'prod') base = 'the product';
+          if (name === 'int') base = 'the integral';
+          if (name === 'iint') base = 'the double integral';
+          if (name === 'iiint') base = 'the triple integral';
+          if (name === 'lim') base = 'the limit';
+
+          if (scripts.lower && scripts.upper) return `${base} from ${scripts.lower} to ${scripts.upper} of`;
+          if (scripts.lower) return `${base} from ${scripts.lower} of`;
+          if (scripts.upper) return `${base} to ${scripts.upper} of`;
+          return `${base} of`;
+        }
+
+        if (['text', 'textrm', 'textit', 'textbf', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'operatorname'].includes(name)) {
+          return this.readArgumentSpeech();
+        }
+
+        if (name === 'overline') return `overline ${this.readArgumentSpeech()}`;
+        if (name === 'underline') return `underline ${this.readArgumentSpeech()}`;
+        if (name === 'hat') return `${this.readArgumentSpeech()} hat`;
+        if (name === 'bar') return `${this.readArgumentSpeech()} bar`;
+        if (name === 'vec') return `vector ${this.readArgumentSpeech()}`;
+        if (name === 'dot') return `${this.readArgumentSpeech()} dot`;
+        if (name === 'ddot') return `${this.readArgumentSpeech()} double dot`;
+
+        if (Object.prototype.hasOwnProperty.call(commandSpeech, name)) return commandSpeech[name];
+
+        // Unknown command: say its name rather than silently deleting potentially meaningful notation.
+        return name.replace(/([a-z])([A-Z])/g, '$1 $2');
+      }
+
+      readScripts() {
+        let lower = '';
+        let upper = '';
+        let searching = true;
+
+        while (searching) {
+          this.skipSpaces();
+          const ch = this.s[this.i];
+          if (ch === '_') {
+            this.i++;
+            lower = this.readArgumentSpeech();
+          } else if (ch === '^') {
+            this.i++;
+            upper = this.readArgumentSpeech();
+          } else {
+            searching = false;
+          }
+        }
+        return { lower, upper };
+      }
+
+      readArgumentSpeech() {
+        this.skipSpaces();
+        if (this.i >= this.s.length) return '';
+
+        if (this.s[this.i] === '{') {
+          this.i++;
+          return this.parseUntil('}');
+        }
+
+        if (this.s[this.i] === '\\') return this.parseCommand();
+        if (/\d/.test(this.s[this.i])) return this.readNumber();
+        if (/[A-Za-z]/.test(this.s[this.i])) return this.readLetters(true);
+
+        const ch = this.s[this.i++];
+        const simple = { '+': 'plus', '-': 'minus', '=': 'equals', '*': 'times' };
+        return simple[ch] || ch;
+      }
+
+      readNumber() {
+        let value = '';
+        while (this.i < this.s.length && /[\d.]/.test(this.s[this.i])) value += this.s[this.i++];
+        return value;
+      }
+
+      readLetters(single = false) {
+        if (single) return this.s[this.i++];
+        let value = '';
+        while (this.i < this.s.length && /[A-Za-z]/.test(this.s[this.i])) value += this.s[this.i++];
+
+        // In maths, a run of letters is usually a sequence of variables rather than a prose word.
+        // Keep recognised function names readable; otherwise separate letters for speech.
+        const knownWords = new Set(['sin', 'cos', 'tan', 'log', 'ln', 'exp', 'min', 'max']);
+        if (knownWords.has(value.toLowerCase())) return value.toLowerCase();
+        if (value.length > 1) return value.split('').join(' ');
+        return value;
+      }
+
+      skipSpaces() {
+        while (this.i < this.s.length && /\s/.test(this.s[this.i])) this.i++;
+      }
+
+      describeFragment(fragment) {
+        return new LatexSpeaker(fragment).speak().replace(/[.]$/, '').toLowerCase();
+      }
+    }
+
+    function latexToShortDescription(latex) {
+      if (!latex.trim()) return '';
+      return new LatexSpeaker(latex).speak();
+    }
+
     function updateOutput() {
-      output.value = convertPowerPointLatex(input.value);
+      const cleaned = convertPowerPointLatex(input.value);
+      output.value = cleaned;
+      description.value = latexToShortDescription(cleaned);
       status.textContent = '';
     }
 
     input.addEventListener('input', updateOutput);
     tidySpacing.addEventListener('change', updateOutput);
 
+    document.getElementById('regenerateBtn').addEventListener('click', () => {
+      description.value = latexToShortDescription(output.value);
+      status.textContent = description.value ? 'Short description regenerated.' : 'There is no formula to describe yet.';
+    });
+
     document.getElementById('clearBtn').addEventListener('click', () => {
       input.value = '';
       output.value = '';
+      description.value = '';
       status.textContent = '';
       input.focus();
     });
@@ -260,29 +572,34 @@
       try {
         input.value = await navigator.clipboard.readText();
         updateOutput();
-        status.textContent = 'Pasted and converted.';
+        status.textContent = 'Pasted, converted and described.';
       } catch (err) {
         status.textContent = 'Clipboard access was blocked. Click the left box and press Ctrl+V instead.';
         input.focus();
       }
     });
 
-    document.getElementById('copyBtn').addEventListener('click', async () => {
-      if (!output.value) {
+    async function copyText(text, fallbackElement, successMessage) {
+      if (!text) {
         status.textContent = 'There is nothing to copy yet.';
         return;
       }
-
       try {
-        await navigator.clipboard.writeText(output.value);
-        status.textContent = 'Copied. Ready to paste into Rise.';
+        await navigator.clipboard.writeText(text);
+        status.textContent = successMessage;
       } catch (err) {
-        output.removeAttribute('readonly');
-        output.select();
+        fallbackElement.select();
         document.execCommand('copy');
-        output.setAttribute('readonly', '');
-        status.textContent = 'Copied. Ready to paste into Rise.';
+        status.textContent = successMessage;
       }
+    }
+
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      copyText(output.value, output, 'LaTeX copied. Ready to paste into Rise.');
+    });
+
+    document.getElementById('copyDescriptionBtn').addEventListener('click', () => {
+      copyText(description.value, description, 'Short description copied.');
     });
   </script>
 </body>
