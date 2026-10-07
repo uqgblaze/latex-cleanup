@@ -322,8 +322,17 @@
       s = s.replace(/\\\\/g, '\\');
 
       // Remove PowerPoint escaping from characters that do not need it.
-      // Example: \_  \^  \{  \}  \=  ->  _  ^  {  }  =
-      s = s.replace(/\\([_{}^=])/g, '$1');
+      // Examples:
+      // \_  -> _
+      // \{  -> {
+      // \}  -> }
+      // \[  -> [
+      // \]  -> ]
+      // \(  -> (
+      // \)  -> )
+      // \^  -> ^
+      // \=  -> =
+      s = s.replace(/\\([_[\]{}()^=])/g, '$1');
 
       // PowerPoint may prefix ordinary numerals with a backslash.
       // Example: \1 -> 1
